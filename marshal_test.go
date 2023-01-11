@@ -13,6 +13,8 @@ const (
 	Null = "040830"
 	// "hoge"
 	String = "0408492209686f6765063a064554"
+	// 3.14
+	Float = "04086609332e3134"
 	// :name
 	SymName = "04083a096e616d65"
 	// 0
@@ -79,6 +81,18 @@ func TestDecodeSymName(t *testing.T) {
 	NewDecoder(bytes.NewReader(b)).Decode(&v)
 	if v != "name" {
 		t.Errorf("not \"name\". Type: %T\tValue: %#v", v, v)
+	}
+}
+
+func TestDecodeFloat(t *testing.T) {
+	b, err := hex.DecodeString(Float)
+	if err != nil {
+		t.Skip(err.Error())
+	}
+	var v float64
+	NewDecoder(bytes.NewReader(b)).Decode(&v)
+	if v != 3.14 {
+		t.Errorf("not 3.14. Type %T\tValue: %#v", v, v)
 	}
 }
 

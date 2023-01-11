@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/big"
 	"reflect"
+	"strconv"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 	TRUE_SIGN        = 'T'
 	FALSE_SIGN       = 'F'
 	FIXNUM_SIGN      = 'i'
+	FLOAT_SIGN       = 'f'
 	RAWSTRING_SIGN   = '"'
 	SYMBOL_SIGN      = ':'
 	SYMBOL_LINK_SIGN = ';'
@@ -51,6 +53,8 @@ func (d *Decoder) unmarshal() interface{} {
 		return true
 	case FALSE_SIGN: // F - false
 		return false
+	case FLOAT_SIGN: // f - float
+		return d.parseFloat()
 	case FIXNUM_SIGN: // i - integer
 		return d.parseInt()
 	case RAWSTRING_SIGN: // " - string
@@ -80,6 +84,18 @@ func (d *Decoder) unmarshal() interface{} {
 	default:
 		return nil
 	}
+}
+
+func (d *Decoder) parseFloat() float64 {
+	var result float64
+	val, _ := d.r.ReadString('\n')
+	val = val[1:]
+
+	result, err := strconv.ParseFloat(string(val), 64)
+	if err != nil {
+		result = 0.00
+	}
+	return result
 }
 
 func (d *Decoder) parseInt() int {
@@ -314,6 +330,8 @@ func (e *Encoder) marshal(v interface{}) error {
 		return e.encInt(int(val.Int()))
 	case reflect.String:
 		return e.encString(val.String())
+	case reflect.Float64:
+		return e.encFloat(val.Float())
 	case reflect.Array, reflect.Slice:
 		e.w.WriteByte(ARRAY_SIGN)
 		err := e.encInt(val.Len())
@@ -347,6 +365,16 @@ func (e *Encoder) marshal(v interface{}) error {
 	return fmt.Errorf("cannot marshal value of type %v", typ.Kind())
 }
 
+func (e *Encoder) encFloat(i float64) error {
+	if _, err := e.w.Write([]byte{FLOAT_SIGN}); err != nil {
+		return err
+	}
+	e.w.WriteString("\t")
+	e.w.WriteString(fmt.Sprintf("%.2f", i))
+
+	return nil
+}
+
 func (e *Encoder) encBool(val bool) error {
 	if val {
 		return e.w.WriteByte(TRUE_SIGN)
@@ -370,7 +398,7 @@ func (e *Encoder) encInt(i int) error {
 	} else if 0xffff < i && i <= 0xffffff {
 		len = 3
 	} else if 0xffffff < i && i <= 0x3fffffff {
-		//for compatibility with 32bit Ruby, Fixnum should be less than 1073741824
+		// for compatibility with 32bit Ruby, Fixnum should be less than 1073741824
 		len = 4
 	} else if -0x100 <= i && i < -123 {
 		len = -1
@@ -379,7 +407,7 @@ func (e *Encoder) encInt(i int) error {
 	} else if -0x1000000 <= i && i < -0x100000 {
 		len = -3
 	} else if -0x40000000 <= i && i < -0x1000000 {
-		//for compatibility with 32bit Ruby, Fixnum should be greater than -1073741825
+		// for compatibility with 32bit Ruby, Fixnum should be greater than -1073741825
 		len = -4
 	}
 

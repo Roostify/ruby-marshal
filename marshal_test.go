@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"testing"
 )
@@ -13,8 +14,6 @@ const (
 	Null = "040830"
 	// "hoge"
 	String = "0408492209686f6765063a064554"
-	// 3.14
-	Float = "04086609332e3134"
 	// :name
 	SymName = "04083a096e616d65"
 	// 0
@@ -81,18 +80,6 @@ func TestDecodeSymName(t *testing.T) {
 	NewDecoder(bytes.NewReader(b)).Decode(&v)
 	if v != "name" {
 		t.Errorf("not \"name\". Type: %T\tValue: %#v", v, v)
-	}
-}
-
-func TestDecodeFloat(t *testing.T) {
-	b, err := hex.DecodeString(Float)
-	if err != nil {
-		t.Skip(err.Error())
-	}
-	var v float64
-	NewDecoder(bytes.NewReader(b)).Decode(&v)
-	if v != 3.14 {
-		t.Errorf("not 3.14. Type %T\tValue: %#v", v, v)
 	}
 }
 
@@ -310,5 +297,199 @@ func TestEncodeMapStringString(t *testing.T) {
 
 	if hex.EncodeToString(w.Bytes()) != encodedWithRuby {
 		t.Error("Map encoding does not match Ruby")
+	}
+}
+
+func TestDecodeFloat(t *testing.T) {
+	tests := []struct {
+		name      string
+		hex       string
+		wantFloat float64
+	}{
+		{
+			name:      "3.14",
+			hex:       "04086609332e3134",
+			wantFloat: 3.14,
+		},
+		{
+			name:      "Negative 3.14",
+			hex:       "0408660a2d332e3134",
+			wantFloat: -3.14,
+		},
+		{
+			name:      "77777.123456789",
+			hex:       "0408661437373737372e313233343536373839",
+			wantFloat: 77777.123456789,
+		},
+		{
+			name:      "Float NaN",
+			hex:       "040866086e616e",
+			wantFloat: math.NaN(),
+		},
+		{
+			name:      "Float Infinity",
+			hex:       "04086608696e66",
+			wantFloat: math.Inf(1),
+		},
+		{
+			name:      "Float -Infinity",
+			hex:       "040866092d696e66",
+			wantFloat: math.Inf(-1),
+		},
+		{
+			name:      "1.0",
+			hex:       "0408660631",
+			wantFloat: 1.0,
+		},
+		{
+			name:      "3.333",
+			hex:       "0408660a332e333333",
+			wantFloat: 3.333,
+		},
+		{
+			name:      "4.4444",
+			hex:       "0408660b342e34343434",
+			wantFloat: 4.4444,
+		},
+		{
+			name:      "Negative 4.4444",
+			hex:       "0408660c2d342e34343434",
+			wantFloat: -4.4444,
+		},
+		{
+			name:      "Negative 103492834353.1258457123",
+			hex:       "040866182d3130333439323833343335332e3132353834",
+			wantFloat: -103492834353.1258457123,
+		},
+		{
+			name:      "Max Float64",
+			hex:       "0408661b312e3739373639333133343836323331353765333038",
+			wantFloat: math.MaxFloat64,
+		},
+		{
+			name:      "Negative Max Float64",
+			hex:       "0408661c2d312e3739373639333133343836323331353765333038",
+			wantFloat: -math.MaxFloat64,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(
+			tt.name, func(t *testing.T) {
+				b, err := hex.DecodeString(tt.hex)
+				if err != nil {
+					t.Skip(err.Error())
+				}
+				var decodedFloat float64
+				NewDecoder(bytes.NewReader(b)).Decode(&decodedFloat)
+
+				if math.IsNaN(tt.wantFloat) {
+					if !math.IsNaN(decodedFloat) {
+						t.Errorf("flaot decoded wanted: Nan, but got: %v", decodedFloat)
+					}
+					return
+				}
+				if decodedFloat != tt.wantFloat {
+					t.Errorf("float decode wanted: %v, but got: %v", tt.wantFloat, decodedFloat)
+				}
+			},
+		)
+	}
+}
+
+func TestEncodeFloat(t *testing.T) {
+	tests := []struct {
+		name    string
+		float   float64
+		wantErr bool
+	}{
+		{
+			name:    "3.14",
+			float:   3.14,
+			wantErr: false,
+		},
+		{
+			name:    "Negative 3.14",
+			float:   -3.14,
+			wantErr: false,
+		},
+		{
+			name:    "77777.123456789",
+			float:   77777.123456789,
+			wantErr: false,
+		},
+		{
+			name:    "Float NaN",
+			float:   math.NaN(),
+			wantErr: false,
+		},
+		{
+			name:    "Float Infinity",
+			float:   math.Inf(1),
+			wantErr: false,
+		},
+		{
+			name:    "Float -Infinity",
+			float:   math.Inf(-1),
+			wantErr: false,
+		},
+		{
+			name:    "1111.111",
+			float:   11.111,
+			wantErr: false,
+		},
+		{
+			name:    "4.4444",
+			float:   4.4444,
+			wantErr: false,
+		},
+		{
+			name:    "Negative 103492834353.1258457123",
+			float:   -103492834353.1258457123,
+			wantErr: false,
+		},
+		{
+			name:    "Max Float64",
+			float:   math.MaxFloat64,
+			wantErr: false,
+		},
+		{
+			name:    "Negative Max Float64",
+			float:   -math.MaxFloat64,
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(
+			tt.name, func(t *testing.T) {
+				var buf bytes.Buffer
+				err := NewEncoder(&buf).Encode(tt.float)
+				if (err != nil) != tt.wantErr {
+					t.Errorf("float encode wanted error, but didn't get one")
+				}
+				resultHex := hex.EncodeToString(buf.Bytes())
+				b, err := hex.DecodeString(resultHex)
+				if err != nil {
+					t.Skip(err.Error())
+				}
+				var decodedFloat float64
+				NewDecoder(bytes.NewReader(b)).Decode(&decodedFloat)
+
+				if !math.IsNaN(tt.float) {
+					resultBigFloat := big.NewFloat(decodedFloat)
+					wantBigFloat := big.NewFloat(tt.float)
+
+					if resultBigFloat.Cmp(wantBigFloat) != 0 {
+						t.Errorf("float encode wanted %#v, but got %#v", wantBigFloat, resultBigFloat)
+					}
+					return
+				}
+				// Check NaN
+				if math.IsNaN(tt.float) {
+					if !math.IsNaN(decodedFloat) {
+						t.Errorf("float encoded wanted NaN, but got: %f", decodedFloat)
+					}
+				}
+			},
+		)
 	}
 }

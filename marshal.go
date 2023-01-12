@@ -2,9 +2,11 @@ package rbmarshal
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"reflect"
 	"strconv"
@@ -88,10 +90,21 @@ func (d *Decoder) unmarshal() interface{} {
 
 func (d *Decoder) parseFloat() float64 {
 	var result float64
-	val, _ := d.r.ReadString('\n')
-	val = val[1:]
+	var buff bytes.Buffer
+	b, errReadB := d.r.ReadByte()
+	if errReadB != nil {
+		result = 0.00
+	}
+	length := int(b) - 5
 
-	result, err := strconv.ParseFloat(string(val), 64)
+	buf := make([]byte, length)
+	_, errReadF := io.ReadFull(d.r, buf)
+	if errReadF != nil {
+		result = 0.00
+	}
+	d.r = bufio.NewReader(&buff)
+	val := string(buf[:])
+	result, err := strconv.ParseFloat(val, 64)
 	if err != nil {
 		result = 0.00
 	}
@@ -369,8 +382,19 @@ func (e *Encoder) encFloat(i float64) error {
 	if _, err := e.w.Write([]byte{FLOAT_SIGN}); err != nil {
 		return err
 	}
-	e.w.WriteString("\t")
-	e.w.WriteString(fmt.Sprintf("%.2f", i))
+	floatStr := fmt.Sprintf("%g", i)
+	size := len(floatStr) + 5
+	switch {
+	case math.IsNaN(i):
+		e.w.WriteString("\bnan")
+	case math.IsInf(i, 1):
+		e.w.WriteString("\binf")
+	case math.IsInf(i, -1):
+		e.w.WriteString("\t-inf")
+	default:
+		e.w.WriteString(fmt.Sprintf("%c", size))
+		e.w.WriteString(floatStr)
+	}
 
 	return nil
 }

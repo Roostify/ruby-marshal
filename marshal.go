@@ -2,11 +2,14 @@ package rbmarshal
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"reflect"
+	"strconv"
 )
 
 const (
@@ -17,6 +20,7 @@ const (
 	TRUE_SIGN        = 'T'
 	FALSE_SIGN       = 'F'
 	FIXNUM_SIGN      = 'i'
+	FLOAT_SIGN       = 'f'
 	RAWSTRING_SIGN   = '"'
 	SYMBOL_SIGN      = ':'
 	SYMBOL_LINK_SIGN = ';'
@@ -51,6 +55,8 @@ func (d *Decoder) unmarshal() interface{} {
 		return true
 	case FALSE_SIGN: // F - false
 		return false
+	case FLOAT_SIGN: // f - float
+		return d.parseFloat()
 	case FIXNUM_SIGN: // i - integer
 		return d.parseInt()
 	case RAWSTRING_SIGN: // " - string
@@ -80,6 +86,29 @@ func (d *Decoder) unmarshal() interface{} {
 	default:
 		return nil
 	}
+}
+
+func (d *Decoder) parseFloat() float64 {
+	var result float64
+	var buff bytes.Buffer
+	b, errReadB := d.r.ReadByte()
+	if errReadB != nil {
+		return 0.00
+	}
+	length := int(b) - 5
+
+	buf := make([]byte, length)
+	_, errReadF := io.ReadFull(d.r, buf)
+	if errReadF != nil {
+		return 0.00
+	}
+	d.r = bufio.NewReader(&buff)
+	val := string(buf[:])
+	result, err := strconv.ParseFloat(val, 64)
+	if err != nil {
+		return 0.00
+	}
+	return result
 }
 
 func (d *Decoder) parseInt() int {
@@ -314,6 +343,8 @@ func (e *Encoder) marshal(v interface{}) error {
 		return e.encInt(int(val.Int()))
 	case reflect.String:
 		return e.encString(val.String())
+	case reflect.Float64:
+		return e.encFloat(val.Float())
 	case reflect.Array, reflect.Slice:
 		e.w.WriteByte(ARRAY_SIGN)
 		err := e.encInt(val.Len())
@@ -345,6 +376,27 @@ func (e *Encoder) marshal(v interface{}) error {
 		}
 	}
 	return fmt.Errorf("cannot marshal value of type %v", typ.Kind())
+}
+
+func (e *Encoder) encFloat(i float64) error {
+	if _, err := e.w.Write([]byte{FLOAT_SIGN}); err != nil {
+		return err
+	}
+	switch {
+	case math.IsNaN(i):
+		e.w.WriteString("\bnan")
+	case math.IsInf(i, 1):
+		e.w.WriteString("\binf")
+	case math.IsInf(i, -1):
+		e.w.WriteString("\t-inf")
+	default:
+		floatStr := fmt.Sprintf("%g", i)
+		size := len(floatStr) + 5
+		e.w.WriteString(fmt.Sprintf("%c", size))
+		e.w.WriteString(floatStr)
+	}
+
+	return nil
 }
 
 func (e *Encoder) encBool(val bool) error {
@@ -379,7 +431,7 @@ func (e *Encoder) encInt(i int) error {
 	} else if -0x1000000 <= i && i < -0x100000 {
 		len = -3
 	} else if -0x40000000 <= i && i < -0x1000000 {
-		//for compatibility with 32bit Ruby, Fixnum should be greater than -1073741825
+		// for compatibility with 32bit Ruby, Fixnum should be greater than -1073741825
 		len = -4
 	}
 

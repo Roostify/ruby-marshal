@@ -93,20 +93,20 @@ func (d *Decoder) parseFloat() float64 {
 	var buff bytes.Buffer
 	b, errReadB := d.r.ReadByte()
 	if errReadB != nil {
-		result = 0.00
+		return 0.00
 	}
 	length := int(b) - 5
 
 	buf := make([]byte, length)
 	_, errReadF := io.ReadFull(d.r, buf)
 	if errReadF != nil {
-		result = 0.00
+		return 0.00
 	}
 	d.r = bufio.NewReader(&buff)
 	val := string(buf[:])
 	result, err := strconv.ParseFloat(val, 64)
 	if err != nil {
-		result = 0.00
+		return 0.00
 	}
 	return result
 }
@@ -382,8 +382,6 @@ func (e *Encoder) encFloat(i float64) error {
 	if _, err := e.w.Write([]byte{FLOAT_SIGN}); err != nil {
 		return err
 	}
-	floatStr := fmt.Sprintf("%g", i)
-	size := len(floatStr) + 5
 	switch {
 	case math.IsNaN(i):
 		e.w.WriteString("\bnan")
@@ -392,6 +390,8 @@ func (e *Encoder) encFloat(i float64) error {
 	case math.IsInf(i, -1):
 		e.w.WriteString("\t-inf")
 	default:
+		floatStr := fmt.Sprintf("%g", i)
+		size := len(floatStr) + 5
 		e.w.WriteString(fmt.Sprintf("%c", size))
 		e.w.WriteString(floatStr)
 	}
@@ -422,7 +422,7 @@ func (e *Encoder) encInt(i int) error {
 	} else if 0xffff < i && i <= 0xffffff {
 		len = 3
 	} else if 0xffffff < i && i <= 0x3fffffff {
-		// for compatibility with 32bit Ruby, Fixnum should be less than 1073741824
+		//for compatibility with 32bit Ruby, Fixnum should be less than 1073741824
 		len = 4
 	} else if -0x100 <= i && i < -123 {
 		len = -1

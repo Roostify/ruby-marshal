@@ -384,7 +384,7 @@ func TestDecodeFloat(t *testing.T) {
 
 				if math.IsNaN(tt.wantFloat) {
 					if !math.IsNaN(decodedFloat) {
-						t.Errorf("flaot decoded wanted: Nan, but got: %v", decodedFloat)
+						t.Errorf("float decoded wanted: Nan, but got: %v", decodedFloat)
 					}
 					return
 				}
